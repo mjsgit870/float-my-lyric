@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "media-access",
+  "description": "Capability to access the media control functionality",
+  "windows": ["main"],
+  "permissions": [
+    "media:default"
+  ]
+}

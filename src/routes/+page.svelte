@@ -1,156 +1,178 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from '@tauri-apps/api/window'
+  import { Client, type LyricLine } from 'lrclib-api'
+  import { onDestroy, onMount } from 'svelte'
+  import { flip } from 'svelte/animate'
+  import { fly } from 'svelte/transition'
+  import { mediaControls } from 'tauri-plugin-media-api'
 
-  let name = $state("");
-  let greetMsg = $state("");
+  const client = new Client()
 
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  let localPosition = $state(0)
+  let isPlaying = $state(false)
+  let lastOsPosition = $state(-1)
+
+  let currentTitle = $state('')
+  let currentArtist = $state('')
+
+  let lyrics = $state<LyricLine[]>([])
+
+  let metadataInterval: ReturnType<typeof setInterval>
+  let positionInterval: ReturnType<typeof setInterval>
+  let uiInterval: ReturnType<typeof setInterval>
+
+  let lastTick = performance.now()
+
+  const activeIndex = $derived.by(() => {
+    for (let i = lyrics.length - 1; i >= 0; i--) {
+      const line = lyrics[i]
+      if (line.startTime !== undefined && localPosition >= line.startTime) {
+        return i
+      }
+    }
+    return -1
+  })
+
+  const visibleLyrics = $derived.by(() => {
+    if (lyrics.length === 0) return []
+
+    const center = activeIndex === -1 ? 0 : activeIndex
+
+    const start = Math.max(0, center - 1)
+    const end = Math.min(lyrics.length, center + 2)
+
+    return lyrics.slice(start, end).map((line, i) => {
+      const originalIndex = start + i
+      return {
+        ...line,
+        id: `${originalIndex}-${line.startTime || 0}`,
+        isActive: originalIndex === activeIndex,
+      }
+    })
+  })
+
+  async function getLyric(title: string, artist: string) {
+    if (!title || !artist) return
+
+    try {
+      const synced = await client.getSynced({
+        track_name: title,
+        artist_name: artist,
+      })
+      lyrics = synced || []
+    } catch (error) {
+      console.error('Lirik tidak ditemukan atau gagal diambil:', error)
+      lyrics = []
+    }
   }
+
+  async function closeApp() {
+    await getCurrentWindow().close()
+  }
+
+  onMount(async () => {
+    try {
+      metadataInterval = setInterval(async () => {
+        const metadata = await mediaControls.getMetadata()
+        if (
+          metadata &&
+          (metadata.title !== currentTitle || metadata.artist !== currentArtist)
+        ) {
+          currentTitle = metadata.title || ''
+          currentArtist = metadata.artist || ''
+          getLyric(currentTitle, currentArtist)
+        }
+      }, 1000)
+
+      positionInterval = setInterval(async () => {
+        const osPosition = await mediaControls.getPosition()
+        const status = await mediaControls.getPlaybackStatus()
+
+        isPlaying = status === 'playing'
+
+        if (osPosition !== lastOsPosition) {
+          localPosition = osPosition
+          lastOsPosition = osPosition
+        }
+      }, 250)
+
+      lastTick = performance.now()
+
+      uiInterval = setInterval(() => {
+        const now = performance.now()
+        const delta = (now - lastTick) / 1000
+        lastTick = now
+
+        if (isPlaying) {
+          localPosition += delta
+        }
+      }, 100)
+    } catch (error) {
+      console.error(error)
+    }
+  })
+
+  onDestroy(() => {
+    clearInterval(metadataInterval)
+    clearInterval(positionInterval)
+    clearInterval(uiInterval)
+  })
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<div class="relative p-4 flex flex-col items-center w-full h-full overflow-hidden">
+  <button
+    onclick={closeApp}
+    class="absolute top-0 right-0 z-50 p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/20 transition-all duration-300"
+    aria-label="Tutup Aplikasi"
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  </button>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
+  <p class="text-white font-bold text-lg drop-shadow-md text-center">
+    {currentTitle || 'Tidak ada lagu'}
+  </p>
+  <p class="text-gray-400 text-sm drop-shadow-md text-center">
+    {currentArtist}
+  </p>
+
+  <!-- Container lirik dengan tinggi tetap agar window tidak melompat-lompat -->
+  <div
+    class="relative flex flex-col items-center justify-center gap-1 min-h-40 w-full overflow-hidden"
+  >
+    {#if lyrics.length > 0}
+      <!-- Gunakan keyed each block (line.id) agar Svelte bisa mendeteksi elemen untuk dianimasikan -->
+      {#each visibleLyrics as line (line.id)}
+        <p
+          animate:flip={{ duration: 400 }}
+          in:fly={{ y: 20, duration: 400 }}
+          out:fly={{ y: -20, duration: 400 }}
+          class="
+            text-center drop-shadow-md transition-all duration-500 ease-in-out absolute
+              {line.isActive
+            ? 'text-emerald-400 text-xl font-bold opacity-100 scale-100 relative'
+            : 'text-gray-400 text-lg opacity-40 scale-90 relative'}
+          "
+        >
+          {line.text}
+        </p>
+      {/each}
+    {:else if currentTitle}
+      <p class="text-gray-500 italic drop-shadow-md text-center">
+        Lirik tidak tersedia
+      </p>
+    {/if}
   </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
-
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
-
-<style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  a:hover {
-    color: #24c8db;
-  }
-
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
-
-</style>
+</div>

@@ -13,16 +13,18 @@
     "windows": [
       {
         "title": "Float My Lyric",
-        "width": 800,
+        "width": 400,
         "height": 200,
         "transparent": true,
-        "decorations": false,
         "alwaysOnTop": true,
-        "skipTaskbar": true
+        "skipTaskbar": false,
+        "decorations": false,
+        "maximizable": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["media-access"]
     }
   },
   "bundle": {
