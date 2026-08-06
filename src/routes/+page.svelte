@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { getCurrentWindow } from '@tauri-apps/api/window'
+  import { MediaControl } from '$lib/components'
+  import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window'
   import { Client, type LyricLine } from 'lrclib-api'
   import { onDestroy, onMount } from 'svelte'
   import { flip } from 'svelte/animate'
@@ -12,6 +13,8 @@
   let localPosition = $state(0)
   let isPlaying = $state(false)
   let lastOsPosition = $state(-1)
+
+  let contentHeight = $state(0)
 
   let currentTitle = $state('')
   let currentArtist = $state('')
@@ -50,6 +53,12 @@
         isActive: originalIndex === activeIndex,
       }
     })
+  })
+
+  $effect(() => {
+    if (contentHeight > 0) {
+      appWindow.setSize(new LogicalSize(400, contentHeight))
+    }
   })
 
   async function getLyric(title: string, artist: string) {
@@ -120,7 +129,10 @@
   })
 </script>
 
-<div class="relative p-4 flex flex-col items-center w-full h-full overflow-hidden">
+<div 
+  bind:clientHeight={contentHeight}
+  class="relative p-4 flex flex-col items-center w-full"
+>
   <button
     onclick={closeApp}
     class="absolute top-0 right-0 z-50 p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/20 transition-all duration-300"
@@ -176,4 +188,7 @@
       </p>
     {/if}
   </div>
+
+  <!-- KONTROL MEDIA -->
+  <MediaControl {isPlaying} />
 </div>

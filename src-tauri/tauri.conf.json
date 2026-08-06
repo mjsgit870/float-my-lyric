@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "float-my-lyric",
+  "productName": "FloatMyLyric",
   "version": "0.1.0",
   "identifier": "com.mjsdev.float-my-lyric",
   "build": {
