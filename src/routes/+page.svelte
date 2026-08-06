@@ -7,6 +7,7 @@
   import { mediaControls } from 'tauri-plugin-media-api'
 
   const client = new Client()
+  const appWindow = getCurrentWindow()
 
   let localPosition = $state(0)
   let isPlaying = $state(false)
@@ -67,7 +68,7 @@
   }
 
   async function closeApp() {
-    await getCurrentWindow().close()
+    await appWindow.close()
   }
 
   onMount(async () => {
@@ -150,7 +151,7 @@
 
   <!-- Container lirik dengan tinggi tetap agar window tidak melompat-lompat -->
   <div
-    class="relative flex flex-col items-center justify-center gap-1 min-h-40 w-full overflow-hidden"
+    class="relative flex flex-col items-center justify-center gap-1 w-full overflow-hidden"
   >
     {#if lyrics.length > 0}
       <!-- Gunakan keyed each block (line.id) agar Svelte bisa mendeteksi elemen untuk dianimasikan -->
